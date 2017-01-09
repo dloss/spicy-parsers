@@ -1,0 +1,77 @@
+# Commodore 64 Disk Images
+# (c) 2017, Dirk Loss
+# MIT license
+# Reference: http://unusedino.de/ec64/technical/formats/d64.html
+
+module D64;
+
+%byteorder = Spicy::ByteOrder::Little;
+
+export type DiskImage = unit {
+    %description = "C64 disk images (*.D64 files)";
+
+    ATracks : list<Track(21)> &count=17;
+    Track18 : DirTrack;
+    BTracks : list<Track(19)> &count=6;
+    CTracks : list<Track(18)> &count=6;
+    DTracks : list<Track(17)> &count=5;
+};
+
+type Track = unit(numSectors: uint64) {
+    sectors : list<Sector> &count=numSectors;
+};
+
+type Sector = unit {
+    nextTrack : uint8;
+    nextSector : uint8;
+    data : bytes &length=254;
+};
+
+type DirTrack = unit {
+    bam : Sector;
+    dirSectors : list<DirSector> &count = 18;
+};
+
+type DirSector = unit {
+    dirEntries : list<DirEntry> &count=8;
+};
+
+type DirEntry = unit {
+    nextTrack : uint8;
+    nextSector : uint8;
+    fileType : uint8 &convert=FileType($$);
+    firstTrack : uint8;
+    firstSector : uint8;
+    fileName : bytes &length=16 &convert=depadFilename($$);
+    RELfirstTrack : uint8;
+    RELfirstSector : uint8;
+    RELreclen : uint8;
+    unused : bytes &length=6;
+    fileSize: uint16;
+};
+
+type FileType = enum {
+    scratched = 0x00,
+    DEL = 0x80,
+    SEQ = 0x81,
+    PRG = 0x82,
+    USR = 0x83,
+    REL = 0x84
+};
+
+bytes depadFilename(b: bytes) {
+    return b.split1(b"\xA0")[0];
+}
+
+# Show directory listing
+# TODO: Print filenames in correct order
+#       given by the nextTrack/nextSector fields
+on DirEntry::%done {
+    if ( self.fileType == FileType::PRG ||
+         self.fileType == FileType::DEL ||
+         self.fileType == FileType::SEQ ||
+         self.fileType == FileType::USR ||
+         self.fileType == FileType::REL )
+        print Spicy::fmt("%s\t[%s]\t%s blocks",
+              (self.fileName, self.fileType, self.fileSize));
+}
