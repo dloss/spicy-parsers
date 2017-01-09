@@ -1,0 +1,82 @@
+# BMP image files
+# (c) 2017, Dirk Loss
+# MIT license
+# References:
+#   http://www.dragonwins.com/domains/getteched/bmp/bmpfileformat.htm
+
+module BMP;
+
+%byteorder = Spicy::ByteOrder::Little;
+
+export type Image = unit {
+    %description = "BMP image file";
+    fileHeader : FileHeader;
+    bitmapInfoHeader : BitmapInfoHeader;
+    colorTable : ColorTable(self.bitmapInfoHeader.colorsInPalette) if (self.bitmapInfoHeader.colorDepth != 24);
+    bitmapData : BitmapData;
+};
+
+type FileHeader = unit {
+    fileType : /BM/;  # other file types (OS/2) not supported right now
+    fileSize : uint32;
+    reserved1 : uint16;
+    reserved2 : uint16;
+    bitmapOffset: uint32;
+};
+
+type BitmapInfoHeader = unit {
+    var colorsInPalette : uint32;
+
+    size : uint32(40); # we only support the typical Windows 3.x BMP files (40 byte header)
+    width : int32;
+    height : int32;
+    planes : uint16(1);
+    colorDepth : uint16;
+    compressionMethod : uint32;
+    imageSize : uint32;
+    horizontalResolution : int32;
+    verticalResolution : int32;
+    colorsInPaletteRaw : uint32;
+    importantColorsUsed : uint32;
+
+    on %done {
+        if ( self.colorsInPaletteRaw == 0 )
+            self.colorsInPalette = uint32(2) ** self.colorDepth;
+        else
+            self.colorsInPalette = self.colorsInPaletteRaw;
+    }
+};
+
+type ColorTable = unit(len: uint32) {
+    table : list<ColorTableEntry> &count=len;
+};
+
+type ColorTableEntry = unit {
+    blue : uint8;
+    green : uint8;
+    red : uint8;
+    unused : uint8(0);
+};
+
+type BitmapData = unit {
+    data : bytes;
+};
+
+
+on BitmapInfoHeader::%done {
+    print "Resolution: ", self.width, "x", self.height;
+    print "Color depth: ", self.colorDepth;
+}
+
+on FileHeader::%done {
+    print "Given offset for bitmap data: ", self.bitmapOffset;
+}
+
+on Image::bitmapInfoHeader {
+    if (self.bitmapInfoHeader.colorDepth == 24)
+         print "Real offset of bitmap data: ", self.offset();
+}
+
+on Image::colorTable {
+    print "Real offset of bitmap data: ", self.offset();
+}
