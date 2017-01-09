@@ -1,0 +1,37 @@
+# FASTQ files
+# (c) 2017, Dirk Loss
+# MIT license
+# References:
+#   http://maq.sourceforge.net/fastq.shtml
+
+module FASTQ;
+
+export type File = unit {
+    %description = "FASTQ file";
+    blocks : list<Block>;
+};
+
+type Block = unit {
+    : /@/;
+    seqname : Seqname;
+    : /\n/;
+
+    seq : Seq;
+    : /\n/;
+
+    : /\+/;
+    : SeqnameOpt;
+    : /\n/;
+
+    qual : Qual;
+    : /\n/;
+};
+
+const Seqname = /[A-Za-z0-9_\/.: -]+/;
+const SeqnameOpt = /([A-Za-z0-9_.:-]+)?/;
+const Seq = /[A-Za-z.~]+/;
+const Qual = /[\!-~]+/;
+
+on Block::%done {
+    print Spicy::fmt("%s %s %s", (self.seqname, self.seq, self.qual));
+}
