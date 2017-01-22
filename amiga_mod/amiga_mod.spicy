@@ -1,0 +1,108 @@
+# Amiga ProTracker/NoiseTracker/Soundtracker Module files
+# (c) 2017, Dirk Loss
+# MIT license
+# References:
+#   https://www.aes.id.au/modformat.html
+#   https://wiki.multimedia.cx/index.php/Protracker_Module#File_Format
+#   https://github.com/haypo/hachoir3/blob/master/hachoir/parser/audio/mod.py
+
+# TODO: Handle sample data
+
+module AmigaMod;
+
+%byteorder = Spicy::ByteOrder::Big;
+
+export type File = unit {
+    %description = "Amiga ProTracker/NoiseTracker/Soundtracker Module";
+
+    header : Header;
+    sample_data : bytes; # TODO: list<Sample>
+};
+
+type Header = unit {
+    var format_info : tuple<string, uint8>;
+    var num_channels : uint8;
+    var tracker : string;
+
+    title : bytes &length=20 &convert=depad0($$).decode(Spicy::Charset::ASCII);
+    sample_infos : list<SampleInfo> &count=31;
+    num_patterns : uint8;
+    played_patterns_count : uint8; # historically set to 127
+    pattern_table : bytes &length=128;
+    format : bytes &length=4 {
+        self.format_info = FormatInfo.get(self.format, ("<unknown>", 4));
+        self.tracker = self.format_info[0];
+        self.num_channels = self.format_info[1];
+    }
+    pattern_data : list<Pattern(self.num_channels)> &count=self.num_patterns;
+};
+
+bytes depad0(b: bytes) {
+    return b.split1(b"\x00")[0];
+}
+
+global FormatInfo = map<bytes, tuple<string, uint8> >(
+    b"M.K.": ("ProTracker/NoiseTracker", 4),
+    b"M!K!": ("ProTracker/NoiseTracker", 4),
+    b"M&K!": ("ProTracker/NoiseTracker", 4),
+    b"RASP": ("StarTrekker", 4),
+    b"FLT4": ("StarTrekker", 4),
+    b"FLT8": ("StarTrekker", 8),
+    b"2CHN": ("FastTracker", 2),
+    b"6CHN": ("FastTracker", 6),
+    b"8CHN": ("FastTracker", 8),
+    b"CD81": ("Octalyser", 8),
+    b"OCTA": ("Octalyser", 8),
+    b"FA04": ("Digital Tracker", 4),
+    b"FA06": ("Digital Tracker", 6),
+    b"FA08": ("Digital Tracker", 8)
+);
+
+type SampleInfo = unit {
+    name : bytes &length=22 &convert=depad0($$);
+    sample_count : uint16;
+    fine_tune : uint8;
+    volume : uint8;
+    loop_start : uint16;   # in words
+    loop_len : uint16;  # in words
+};
+
+type Pattern = unit(num_channels: uint8) {
+    rows : list<Row(num_channels)> &count=64;
+};
+
+type Row = unit(num_channels: uint8) {
+    cells : list<Cell> &count=num_channels;
+};
+
+type Cell = unit {
+    var note : uint32;
+
+    bits : bitfield(32){
+        note_hi_nibble : 28..31;
+        period : 16..27;
+        note_low_nibble : 12..15;
+        effect : 0..11;
+    };
+    parameter : uint8;
+
+    on %done {
+        self.note = self.bits.note_hi_nibble * 16 + self.bits.note_low_nibble;
+    }
+};
+
+on SampleInfo::%done {
+    if ( self.name != b"" )
+        print "SampleInfo: ", self.name.decode(Spicy::Charset::ASCII);
+}
+
+on File::%done {
+    print "=====";
+    print "Title: ", self.header.title;
+    print "Format: ", Spicy::fmt("%s (%s, %s channels)",
+              (self.header.format.decode(Spicy::Charset::ASCII),
+               self.header.tracker,
+               self.header.num_channels));
+}
+
+
